@@ -75,6 +75,28 @@ typedef struct {
 sTask SCH_tasks_G[SCH_MAX_TASKS];
 
 //Ham giam dan thoi gian delay va set RunMe len de execute
+void SCH_Update(void){
+	uint8_t Index = 0;
+	//Kiem tra tung task
+	for(Index = 0; Index < SCH_MAX_TASKS; Index++){
+		//kiem tra xem co task khong
+		if(SCH_tasks_G[Index].pTask){
+			//neu task het thoi gian delay
+			if(SCH_tasks_G[Index].Delay == 0){
+				//tang bien RunMe len de execute task
+				SCH_tasks_G[Index].RunMe += 1;
+				//Kiem tra co phai "one shot" task, neu khong phai thi gan lai Delay
+				if(SCH_tasks_G[Index].Period > 0){
+					SCH_tasks_G[Index].Delay = SCH_tasks_G[Index].Period;
+				}
+			}else{
+				//van con thoi gian delay
+				SCH_tasks_G[Index].Delay--;
+			}
+		}
+	}
+}
+
 void SCH_Update2(void){
 	//kiem tra task dau tien
 	if(SCH_tasks_G[0].pTask){
@@ -87,6 +109,31 @@ void SCH_Update2(void){
 }
 
 //Ham them task vao mang
+uint32_t SCH_Add_Task(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
+	uint8_t Index = 0;
+	//First find a gap in the array (if there is one)
+	while((SCH_tasks_G[Index].pTask != 0) && (Index < SCH_MAX_TASKS))
+	{
+		Index++;
+	}
+	//Have we reached the end of the list?
+	if(Index == SCH_MAX_TASKS){
+//		//Task list is full
+//		//Set the global error variable
+//		Error_code_G = ERROR_SCH_TOO_MANY_TASKS;
+//		//also return an error code
+//		return SCh_MAX_TASKS;
+		return 0;
+	}
+	//if we're here, there is a space in the task array
+	SCH_tasks_G[Index].pTask = pFunction;
+	SCH_tasks_G[Index].Delay = DELAY/10;
+	SCH_tasks_G[Index].Period = PERIOD/10;
+	SCH_tasks_G[Index].RunMe = 0;
+	//return position of task (to allow later deletion)
+	return Index;
+}
+
 uint32_t SCH_Add_Task2(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
 	uint8_t Index = 0;
 	//bien de dich chuyen phan tu cua mang qua 1 don vi
@@ -163,6 +210,22 @@ void SCH_Delete_Task2(){
 }
 
 //Ham check xem co task nao can execute chua
+void SCH_Dispatch_Tasks(void){
+	uint8_t Index;
+	//Dispatches (runs) the next task (if one is ready)
+	for(Index = 0; Index < SCH_MAX_TASKS; Index++){
+		if(SCH_tasks_G[Index].RunMe > 0){
+			(*SCH_tasks_G[Index].pTask)(); //Run the task
+			SCH_tasks_G[Index].RunMe -= 1; //Reset/Reduce RunMe flag
+			//Periodic tasks will automatically run again
+			//-if this is a 'one shot' task, remove it from the array
+			if(SCH_tasks_G[Index].Period == 0){
+				SCH_Delete_Task(Index);
+			}
+		}
+	}
+}
+
 void SCH_Dispatch_Tasks2(void){
 	//Dispatches (runs) the next task (if one is ready)
 	if(SCH_tasks_G[0].pTask){
