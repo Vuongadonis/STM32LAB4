@@ -71,11 +71,11 @@ typedef struct {
 
 //MUST BE ADJUSTED FOR EACH NEW PROJECT
 #define SCH_MAX_TASKS 40
-#define NO_TASK_ID 0
+uint8_t nTask = 0;
 sTask SCH_tasks_G[SCH_MAX_TASKS];
 
 //Ham giam dan thoi gian delay va set RunMe len de execute
-void SCH_Update2(void){
+void SCH_Update(void){
 	//kiem tra task dau tien
 	if(SCH_tasks_G[0].pTask){
 		if(SCH_tasks_G[0].Delay == 0){
@@ -87,7 +87,7 @@ void SCH_Update2(void){
 }
 
 //Ham them task vao mang
-uint32_t SCH_Add_Task2(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
+uint32_t SCH_Add_Task(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
 	uint8_t Index = 0;
 	//bien de dich chuyen phan tu cua mang qua 1 don vi
 	uint8_t move = 0;
@@ -95,7 +95,12 @@ uint32_t SCH_Add_Task2(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
 	//tong delay cua cac task (de so sanh voi delay cua task moi )
 	uint16_t total = 0;
 	//First find a gap in the array (if there is one)
-	while((SCH_tasks_G[Index].pTask != 0) && (Index < SCH_MAX_TASKS))
+
+	if(nTask == SCH_MAX_TASKS){
+		return 0;
+	}
+
+	while((SCH_tasks_G[Index].pTask != 0) && (Index < nTask))
 	{
 		if(total + SCH_tasks_G[Index].Delay > delayDcycle){
 			break;
@@ -103,13 +108,10 @@ uint32_t SCH_Add_Task2(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
 		total = total + SCH_tasks_G[Index].Delay;
 		Index++;
 	}
-	//Have we reached the end of the list?
-	if(Index == SCH_MAX_TASKS){
-		return 0;
-	}
-	//if we're here, there is a space in the task array
+
+	//if we're here, move task to has a space
 	if(SCH_tasks_G[Index].pTask){
-		for(move = SCH_MAX_TASKS - 1; move > Index; move--){
+		for(move = nTask; move > Index; move--){
 			SCH_tasks_G[move].pTask = SCH_tasks_G[move-1].pTask;
 			SCH_tasks_G[move].Delay = SCH_tasks_G[move-1].Delay;
 			SCH_tasks_G[move].Period = SCH_tasks_G[move-1].Period;
@@ -126,29 +128,14 @@ uint32_t SCH_Add_Task2(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
 		SCH_tasks_G[Index+1].Delay = SCH_tasks_G[Index+1].Delay - SCH_tasks_G[Index].Delay;
 	}
 	//return position of task (to allow later deletion)
+	nTask = nTask + 1;
 	return Index;
 }
 
-//Xoa task duoc chi dinh
-void SCH_Delete_Task(uint32_t taskID){
-	if(SCH_tasks_G[taskID].pTask == 0){
-		//No task at this location...
-		//
-		//Set the global error variable
-		//...also return an error code
-		//return 0;
-		return;
-	}
-	SCH_tasks_G[taskID].pTask = 0x0000;
-	SCH_tasks_G[taskID].Delay = 0;
-	SCH_tasks_G[taskID].Period = 0;
-	SCH_tasks_G[taskID].RunMe = 0;
-	//return 0;
-}
-
-void SCH_Delete_Task2(){
+//Xoa task dau tien
+void SCH_Delete_Task(){
 	uint8_t Index;
-	for(Index = 0; Index < SCH_MAX_TASKS-1; Index++){
+	for(Index = 0; Index < nTask; Index++){
 		if(SCH_tasks_G[Index+1].pTask){
 			SCH_tasks_G[Index].pTask = SCH_tasks_G[Index+1].pTask;
 			SCH_tasks_G[Index].Delay = SCH_tasks_G[Index+1].Delay;
@@ -156,23 +143,26 @@ void SCH_Delete_Task2(){
 			SCH_tasks_G[Index].RunMe = SCH_tasks_G[Index+1].RunMe;
 		}
 		if(SCH_tasks_G[Index].pTask == 0x0000){
-			SCH_Delete_Task(Index);
+			SCH_tasks_G[Index].Delay = 0;
+			SCH_tasks_G[Index].Period = 0;
+			SCH_tasks_G[Index].RunMe = 0;
+			nTask = nTask - 1;
 			break;
 		}
 	}
 }
 
 //Ham check xem co task nao can execute chua
-void SCH_Dispatch_Tasks2(void){
+void SCH_Dispatch_Tasks(void){
 	//Dispatches (runs) the next task (if one is ready)
 	if(SCH_tasks_G[0].pTask){
 		if(SCH_tasks_G[0].RunMe > 0){
 			(*SCH_tasks_G[0].pTask)();
-			SCH_tasks_G[0].RunMe--;
+			SCH_tasks_G[0].RunMe = 0;
 			if(SCH_tasks_G[0].Period > 0){
-				SCH_Add_Task2(SCH_tasks_G[0].pTask, SCH_tasks_G[0].Period, SCH_tasks_G[0].Period);
+				SCH_Add_Task(SCH_tasks_G[0].pTask, SCH_tasks_G[0].Period, SCH_tasks_G[0].Period);
 			}
-			SCH_Delete_Task2();
+			SCH_Delete_Task();
 		}
 	}
 }
@@ -181,7 +171,7 @@ void SCH_Dispatch_Tasks2(void){
 void SCH_Init(void){
 	uint8_t i;
 	for(i=0; i<SCH_MAX_TASKS; i++){
-		SCH_Delete_Task(i);
+		SCH_Delete_Task();
 	}
 	//Reset the global error variable
 	//-SCH_Delete_Task() will generate an error code
@@ -191,24 +181,24 @@ void SCH_Init(void){
 //	Watchdog_init();
 }
 
-void toggleRED(){
-	HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+void toggleLED1(){
+	HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 }
 
-void toggleGREEN(){
-	HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+void toggleLED2(){
+	HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 }
 
-void toggleYELLOW(){
-	HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
+void toggleLED3(){
+	HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
 }
 
-void turnOnLED(){
-	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, RESET);
+void toggleLED4(){
+	HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
 }
 
-void turnOffLED(){
-	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, SET);
+void toggleLED5(){
+	HAL_GPIO_TogglePin(LED5_GPIO_Port, LED5_Pin);
 }
 
 
@@ -250,21 +240,16 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   SCH_Init();
-  SCH_Add_Task2(toggleRED, 1000, 1000);
-  SCH_Add_Task2(toggleGREEN, 1250, 1000);
-  SCH_Add_Task2(toggleYELLOW, 1500, 1000);
-//  SCH_Add_Task2(turnOnLED, 2000, 2000);
-//  SCH_Add_Task2(turnOffLED, 2000, 2500);
-  SCH_Add_Task2(SCH_tasks_G[0].pTask, SCH_tasks_G[0].Period, SCH_tasks_G[0].Period);
-//  SCH_Delete_Task2();
+  SCH_Add_Task(toggleLED1, 500, 500);
+  SCH_Add_Task(toggleLED2, 1010, 1000);
+  SCH_Add_Task(toggleLED3, 1520, 1500);
+  SCH_Add_Task(toggleLED4, 2030, 2000);
+  SCH_Add_Task(toggleLED5, 2540, 2500);
   while (1)
   {
-	  SCH_Dispatch_Tasks2();
-//	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-//	  SCH_tasks_G[0].pTask();
-//	  SCH_tasks_G[1].pTask();
-//	  SCH_tasks_G[2].pTask();
-//	  HAL_Delay(500);
+	  SCH_Update();
+	  SCH_Dispatch_Tasks();
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -368,10 +353,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LED_Pin|LED_GREEN_Pin|LED_RED_Pin|LED_YELLOW_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LED1_Pin|LED2_Pin|LED3_Pin|LED4_Pin
+                          |LED5_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED_Pin LED_GREEN_Pin LED_RED_Pin LED_YELLOW_Pin */
-  GPIO_InitStruct.Pin = LED_Pin|LED_GREEN_Pin|LED_RED_Pin|LED_YELLOW_Pin;
+  /*Configure GPIO pins : LED1_Pin LED2_Pin LED3_Pin LED4_Pin
+                           LED5_Pin */
+  GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin|LED3_Pin|LED4_Pin
+                          |LED5_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -383,7 +371,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	SCH_Update2();
+//	SCH_Update();
 }
 /* USER CODE END 4 */
 
