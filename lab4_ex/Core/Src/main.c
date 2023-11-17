@@ -75,103 +75,100 @@ uint8_t nTask = 0;
 sTask SCH_tasks_G[SCH_MAX_TASKS];
 
 //Ham giam dan thoi gian delay va set RunMe len de execute
-void SCH_Update(void){
-	//kiem tra task dau tien
+void SCH_Update(){
 	if(SCH_tasks_G[0].pTask){
 		if(SCH_tasks_G[0].Delay == 0){
-			SCH_tasks_G[0].RunMe = 1;
-		}else{
+			SCH_tasks_G[0].RunMe+=1;
+		}
+		else{
 			SCH_tasks_G[0].Delay--;
 		}
 	}
 }
 
 //Ham them task vao mang
-uint32_t SCH_Add_Task(void (*pFunction)(), uint32_t DELAY, uint32_t PERIOD){
-	uint8_t Index = 0;
-	//bien de dich chuyen phan tu cua mang qua 1 don vi
-	uint8_t move = 0;
-	uint8_t delayDcycle = DELAY/10;
-	//tong delay cua cac task (de so sanh voi delay cua task moi )
-	uint16_t total = 0;
-	//First find a gap in the array (if there is one)
+void SCH_Add_Task(void (*pFunction), const uint32_t Delay, const uint32_t Period){
+	int index = 0;
+	int total_delay = Delay/10;
 
-	if(nTask == SCH_MAX_TASKS){
-		return 0;
-	}
-
-	while((SCH_tasks_G[Index].pTask != 0) && (Index < nTask))
-	{
-		if(total + SCH_tasks_G[Index].Delay > delayDcycle){
+	for(int i=0; i<SCH_MAX_TASKS; i++){
+		if(SCH_tasks_G[i].pTask){
+			if(SCH_tasks_G[i].Delay <= total_delay){
+				total_delay = total_delay - SCH_tasks_G[i].Delay;
+			}
+			else{
+				index = i;
+				break;
+			}
+		}
+		else{
+			index = i;
 			break;
 		}
-		total = total + SCH_tasks_G[Index].Delay;
-		Index++;
 	}
-
-	//if we're here, move task to has a space
-	if(SCH_tasks_G[Index].pTask){
-		for(move = nTask; move > Index; move--){
-			SCH_tasks_G[move].pTask = SCH_tasks_G[move-1].pTask;
-			SCH_tasks_G[move].Delay = SCH_tasks_G[move-1].Delay;
-			SCH_tasks_G[move].Period = SCH_tasks_G[move-1].Period;
-			SCH_tasks_G[move].RunMe = SCH_tasks_G[move-1].RunMe;
+	for(int i = SCH_MAX_TASKS; i>index; i--){
+		if(SCH_tasks_G[i-1].pTask){
+			SCH_tasks_G[i].pTask = SCH_tasks_G[i-1].pTask;
+			SCH_tasks_G[i].Delay = SCH_tasks_G[i-1].Delay;
+			SCH_tasks_G[i].Period = SCH_tasks_G[i-1].Period;
+			SCH_tasks_G[i].RunMe = SCH_tasks_G[i-1].RunMe;
 		}
 	}
-	//add new task into array
-	SCH_tasks_G[Index].pTask = pFunction;
-	SCH_tasks_G[Index].Delay = delayDcycle - total;
-	SCH_tasks_G[Index].Period = PERIOD;
-	SCH_tasks_G[Index].RunMe = 0;
-	//update delay of task after new task
-	if(SCH_tasks_G[Index+1].pTask){
-		SCH_tasks_G[Index+1].Delay = SCH_tasks_G[Index+1].Delay - SCH_tasks_G[Index].Delay;
+	SCH_tasks_G[index].pTask = pFunction;
+	SCH_tasks_G[index].Delay = total_delay;
+	SCH_tasks_G[index].Period = Period;
+	SCH_tasks_G[index].RunMe = 0;
+	if(SCH_tasks_G[index+1].pTask){
+		SCH_tasks_G[index+1].Delay = SCH_tasks_G[index+1].Delay - total_delay;
 	}
-	//return position of task (to allow later deletion)
-	nTask = nTask + 1;
-	return Index;
+}
+
+void SCH_Delete(uint8_t index){
+	SCH_tasks_G[index].Delay = 0;
+	SCH_tasks_G[index].Period = 0;
+	SCH_tasks_G[index].RunMe = 0;
+	SCH_tasks_G[index].pTask = 0x0000;
 }
 
 //Xoa task dau tien
-void SCH_Delete_Task(){
-	uint8_t Index;
-	for(Index = 0; Index < nTask; Index++){
-		if(SCH_tasks_G[Index+1].pTask){
-			SCH_tasks_G[Index].pTask = SCH_tasks_G[Index+1].pTask;
-			SCH_tasks_G[Index].Delay = SCH_tasks_G[Index+1].Delay;
-			SCH_tasks_G[Index].Period = SCH_tasks_G[Index+1].Period;
-			SCH_tasks_G[Index].RunMe = SCH_tasks_G[Index+1].RunMe;
-		}
-		if(SCH_tasks_G[Index].pTask == 0x0000){
-			SCH_tasks_G[Index].Delay = 0;
-			SCH_tasks_G[Index].Period = 0;
-			SCH_tasks_G[Index].RunMe = 0;
-			nTask = nTask - 1;
-			break;
-		}
+void SCH_Delete_Task(uint8_t index){
+	int final = 0;
+	SCH_Delete(index);
+	for(int i=index; i<SCH_MAX_TASKS; i++){
+			SCH_tasks_G[i].pTask = SCH_tasks_G[i+1].pTask;
+			SCH_tasks_G[i].Delay = SCH_tasks_G[i+1].Delay;
+			SCH_tasks_G[i].Period = SCH_tasks_G[i+1].Period;
+			SCH_tasks_G[i].RunMe = SCH_tasks_G[i+1].RunMe;
+			if(SCH_tasks_G[i].pTask == 0x0000){
+				final = i;
+				break;
+			}
 	}
+	SCH_Delete(final);
 }
 
 //Ham check xem co task nao can execute chua
 void SCH_Dispatch_Tasks(void){
-	//Dispatches (runs) the next task (if one is ready)
 	if(SCH_tasks_G[0].pTask){
-		if(SCH_tasks_G[0].RunMe > 0){
+		if(SCH_tasks_G[0].RunMe>0){
 			(*SCH_tasks_G[0].pTask)();
-			SCH_tasks_G[0].RunMe = 0;
-			if(SCH_tasks_G[0].Period > 0){
+			SCH_tasks_G[0].RunMe--;
+
+			if(SCH_tasks_G[0].Period){
 				SCH_Add_Task(SCH_tasks_G[0].pTask, SCH_tasks_G[0].Period, SCH_tasks_G[0].Period);
 			}
-			SCH_Delete_Task();
+			SCH_Delete_Task(0);
 		}
 	}
 }
-
 //Ham xoa tat ca cac task trong array, khien array nhu vua duoc khoi tao
 void SCH_Init(void){
 	uint8_t i;
 	for(i=0; i<SCH_MAX_TASKS; i++){
-		SCH_Delete_Task();
+		SCH_tasks_G[i].Delay = 0;
+		SCH_tasks_G[i].Period = 0;
+		SCH_tasks_G[i].RunMe = 0;
+		SCH_tasks_G[i].pTask = 0x0000;
 	}
 	//Reset the global error variable
 	//-SCH_Delete_Task() will generate an error code
@@ -239,7 +236,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  SCH_Init();
+//  SCH_Init();
   SCH_Add_Task(toggleLED1, 500, 500);
   SCH_Add_Task(toggleLED2, 1010, 1000);
   SCH_Add_Task(toggleLED3, 1520, 1500);
@@ -247,9 +244,8 @@ int main(void)
   SCH_Add_Task(toggleLED5, 2540, 2500);
   while (1)
   {
-	  SCH_Update();
+
 	  SCH_Dispatch_Tasks();
-	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -371,7 +367,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-//	SCH_Update();
+	SCH_Update();
 }
 /* USER CODE END 4 */
 
